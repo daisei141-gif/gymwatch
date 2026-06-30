@@ -34,13 +34,15 @@ export default function GroupPage() {
     if (!user) { router.replace('/auth'); return }
     setUserId(user.id)
 
-    const { data: member } = await supabase
+    const { data: memberRaw } = await supabase
       .from('group_members')
       .select('group_id, monthly_goal, groups(id, name, invite_code, penalty)')
       .eq('user_id', user.id)
       .order('joined_at', { ascending: false })
       .limit(1)
       .single()
+
+    const member = memberRaw as any
 
     if (member) {
       setGroup(member.groups)

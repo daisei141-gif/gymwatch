@@ -35,13 +35,15 @@ export default function Dashboard() {
       .from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
 
-    const { data: member } = await supabase
+    const { data: memberRaw } = await supabase
       .from('group_members')
       .select('*, groups(name, penalty)')
       .eq('user_id', user.id)
       .order('joined_at', { ascending: false })
       .limit(1)
       .single()
+
+    const member = memberRaw as any
 
     if (member) {
       setMemberData(member)
