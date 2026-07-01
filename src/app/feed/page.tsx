@@ -71,7 +71,8 @@ export default function FeedPage() {
     if (!post) return
     const newApproved = post.approved_count + (type === 'approve' ? 1 : 0)
     const newRejected = post.rejected_count + (type === 'reject' ? 1 : 0)
-    const majority = Math.floor(memberCount / 2) + 1
+    // 2人グループは1票で承認、3人以上は過半数
+    const majority = memberCount <= 2 ? 1 : Math.floor(memberCount / 2) + 1
     const newStatus = newApproved >= majority ? 'approved' : newRejected >= majority ? 'rejected' : 'pending'
 
     await supabase.from('posts').update({

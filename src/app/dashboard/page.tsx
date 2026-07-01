@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import BottomNav from '@/components/BottomNav'
+import { usePushNotification } from '@/lib/usePush'
 
 const TAUNTS = [
   'お前、今月まだ{count}回しか行ってないじゃん笑',
@@ -14,15 +15,36 @@ const TAUNTS = [
   '筋肉じゃなくてサボり筋が鍛えられてそう',
 ]
 
+const PUSH_TAUNTS = [
+  '今日もサボり？そのプロテイン代、もったいないぞ💪',
+  '3日連続サボりは本当のサボり魔だけがやること🤣',
+  'グループのみんなが待ってるぞ！ジム行ってこい！',
+  '筋肉は裏切らない。でもお前は筋肉を裏切ってる😤',
+  '今すぐジムへ行け！それだけだ！🔥',
+]
+
 export default function Dashboard() {
   const router = useRouter()
   const supabase = createClient()
-  const [profile, setProfile] = useState<any>(null)
-  const [memberData, setMemberData] = useState<any>(null)
+  const [profile, setProfile] = useState(null)
+  const [memberData, setMemberData] = useState(null)
   const [postCount, setPostCount] = useState(0)
   const [groupName, setGroupName] = useState('')
   const [taunt, setTaunt] = useState('')
   const [loading, setLoading] = useState(true)
+  const { permission, supported, requestPermission, sendLocalNotification } = usePushNotification()
+
+  async function enableNotifications() {
+    const granted = await requestPermission()
+    if (granted) {
+      sendLocalNotification('GymWatch 通知オン！🔥', 'サボったらすぐ煽りが届くぞ💪')
+    }
+  }
+
+  function sendTauntNow() {
+    const msg = PUSH_TAUNTS[Math.floor(Math.random() * PUSH_TAUNTS.length)]
+    sendLocalNotification('GymWatch 煽り通知🔥', msg)
+  }
 
   useEffect(() => {
     loadData()
@@ -170,6 +192,31 @@ export default function Dashboard() {
         <Link href="/post" className="btn-orange block text-center text-lg mt-2">
           📸　今日ジム行った！投稿
         </Link>
+
+        {/* Push notification section */}
+        {supported && (
+          <div className="card mt-3">
+            <p className="card-title">🔔 煽り通知</p>
+            {permission !== 'granted' ? (
+              <>
+                <p className="text-sm text-gym-muted mb-3">通知をオンにするとサボった時に煽りメッセージが届く！</p>
+                <button className="btn-orange py-3 text-sm" onClick={enableNotifications}>
+                  通知をオンにする
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-green-400 mb-3">✓ 通知オン済み</p>
+                <button
+                  onClick={sendTauntNow}
+                  className="w-full py-3 bg-gym-orange/10 border border-gym-orange/30 text-gym-orange font-bold text-sm rounded-2xl active:opacity-70"
+                >
+                  🔥 今すぐ煽りを送る（テスト）
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <BottomNav />

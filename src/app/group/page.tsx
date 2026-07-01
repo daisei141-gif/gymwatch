@@ -1,5 +1,4 @@
 // @ts-nocheck
-// FIXED-VERSION-v2
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -14,8 +13,8 @@ export default function GroupPage() {
   const router = useRouter()
   const supabase = createClient()
   const [userId, setUserId] = useState('')
-  const [group, setGroup] = useState<any>(null)
-  const [members, setMembers] = useState<any[]>([])
+  const [group, setGroup] = useState(null)
+  const [members, setMembers] = useState([])
   const [myGoal, setMyGoal] = useState(12)
   const [newGoal, setNewGoal] = useState(12)
   const [penalty, setPenalty] = useState('')
@@ -23,11 +22,12 @@ export default function GroupPage() {
   const [inviteCode, setInviteCode] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupPenalty, setNewGroupPenalty] = useState('')
-  const [tab, setTab] = useState<'main' | 'create' | 'join'>('main')
+  const [tab, setTab] = useState('main')
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   useEffect(() => { loadGroup() }, [])
 
@@ -36,7 +36,7 @@ export default function GroupPage() {
     if (!user) { router.replace('/auth'); return }
     setUserId(user.id)
 
-    const { data: memberRaw }: { data: any } = await supabase
+    const { data: memberRaw } = await supabase
       .from('group_members')
       .select('group_id, monthly_goal, groups(id, name, invite_code, penalty)')
       .eq('user_id', user.id)
@@ -44,10 +44,10 @@ export default function GroupPage() {
       .limit(1)
       .single()
 
-    const member: any = memberRaw
+    const member = memberRaw
 
     if (member) {
-      const groupData: any = member.groups
+      const groupData = member.groups
       setGroup(groupData)
       setMyGoal(member.monthly_goal)
       setNewGoal(member.monthly_goal)
@@ -106,6 +106,22 @@ export default function GroupPage() {
     if (error) { setErr('すでに参加しているか、エラーが発生しました'); return }
     setMsg(`「${grp.name}」に参加しました！`)
     loadGroup()
+    setTab('main')
+  }
+
+  async function leaveGroup() {
+    if (!group) return
+    const { error } = await supabase
+      .from('group_members')
+      .delete()
+      .eq('user_id', userId)
+      .eq('group_id', group.id)
+
+    if (error) { setErr('退会に失敗しました'); return }
+    setGroup(null)
+    setMembers([])
+    setShowLeaveConfirm(false)
+    setMsg('グループを退会しました')
     setTab('main')
   }
 
@@ -186,7 +202,7 @@ export default function GroupPage() {
             <input className="input-field" placeholder="GW-XXXX" value={inviteCode} onChange={e => setInviteCode(e.target.value)} />
             {err && <p className="text-red-400 text-sm mb-2">{err}</p>}
             <button className="btn-orange" onClick={joinGroup}>参加する</button>
-            <button className="btn-ghost mt-2" onClick={() => { setTab('join'); setErr('') }}>戻る</button>
+            <button className="btn-ghost mt-2" onClick={() => { setTab('main'); setErr('') }}>戻る</button>
           </div>
         )}
 
@@ -198,13 +214,11 @@ export default function GroupPage() {
               <p className="card-title">{group.name}</p>
               <div className="flex flex-wrap gap-2 mb-4">
                 {members.map(m => (
-                  <span key={m.user_id} className="bg-gym-orange/10 border border-gym-orange/20
-                                                    text-gym-orange text-xs font-bold px-3 py-1 rounded-full">
+                  <span key={m.user_id} className="bg-gym-orange/10 border border-gym-orange/20 text-gym-orange text-xs font-bold px-3 py-1 rounded-full">
                     {m.profiles?.display_name}
                   </span>
                 ))}
               </div>
-              {/* Invite code */}
               <div className="flex items-center gap-2 bg-gym-surface rounded-xl p-3 border border-gym-border">
                 <div className="flex-1">
                   <p className="text-xs text-gym-muted mb-0.5">招待コード</p>
@@ -212,8 +226,7 @@ export default function GroupPage() {
                 </div>
                 <button
                   onClick={copyCode}
-                  className="bg-gym-orange/10 border border-gym-orange/30 text-gym-orange
-                             text-xs font-bold px-4 py-2 rounded-xl active:opacity-70"
+                  className="bg-gym-orange/10 border border-gym-orange/30 text-gym-orange text-xs font-bold px-4 py-2 rounded-xl active:opacity-70"
                 >
                   {copied ? '✓ コピー済み' : '📋 コピー'}
                 </button>
@@ -227,15 +240,9 @@ export default function GroupPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm">今月のジム回数目標</p>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setNewGoal(g => Math.max(1, g - 1))}
-                    className="w-8 h-8 bg-gym-border rounded-lg font-black text-lg flex items-center justify-center"
-                  >-</button>
+                  <button onClick={() => setNewGoal(g => Math.max(1, g - 1))} className="w-8 h-8 bg-gym-border rounded-lg font-black text-lg flex items-center justify-center">-</button>
                   <span className="text-2xl font-black text-gym-orange w-8 text-center">{newGoal}</span>
-                  <button
-                    onClick={() => setNewGoal(g => Math.min(31, g + 1))}
-                    className="w-8 h-8 bg-gym-border rounded-lg font-black text-lg flex items-center justify-center"
-                  >+</button>
+                  <button onClick={() => setNewGoal(g => Math.min(31, g + 1))} className="w-8 h-8 bg-gym-border rounded-lg font-black text-lg flex items-center justify-center">+</button>
                 </div>
               </div>
               {newGoal !== myGoal && (
@@ -248,12 +255,7 @@ export default function GroupPage() {
               <p className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-2">🎲 罰ゲーム</p>
               {editPenalty ? (
                 <>
-                  <input
-                    className="input-field text-sm"
-                    value={penalty}
-                    onChange={e => setPenalty(e.target.value)}
-                    placeholder="例：飲み会で全額払い"
-                  />
+                  <input className="input-field text-sm" value={penalty} onChange={e => setPenalty(e.target.value)} placeholder="例：飲み会で全額払い" />
                   <div className="flex gap-2">
                     <button className="btn-orange py-2.5 text-sm" onClick={savePenalty}>保存</button>
                     <button className="btn-ghost py-2.5 text-sm" onClick={() => setEditPenalty(false)}>キャンセル</button>
@@ -262,15 +264,30 @@ export default function GroupPage() {
               ) : (
                 <>
                   <p className="text-purple-300 font-bold text-sm mb-3">{penalty || '未設定'}</p>
-                  <button
-                    onClick={() => setEditPenalty(true)}
-                    className="text-xs text-purple-400 border border-purple-800/50 rounded-lg px-4 py-2"
-                  >✏️ 編集</button>
+                  <button onClick={() => setEditPenalty(true)} className="text-xs text-purple-400 border border-purple-800/50 rounded-lg px-4 py-2">✏️ 編集</button>
                 </>
               )}
             </div>
 
-            <button className="btn-ghost" onClick={() => setTab('join')}>別のグループに参加する</button>
+            <button className="btn-ghost mb-2" onClick={() => setTab('join')}>別のグループに参加する</button>
+
+            {/* Leave group */}
+            {!showLeaveConfirm ? (
+              <button
+                onClick={() => setShowLeaveConfirm(true)}
+                className="w-full py-3 bg-transparent border border-red-500/40 text-red-400 font-bold text-sm rounded-2xl active:opacity-70 mt-2"
+              >
+                🚪 このグループを退会する
+              </button>
+            ) : (
+              <div className="bg-red-900/20 border border-red-500/40 rounded-2xl p-4 mt-2">
+                <p className="text-red-400 font-bold text-sm mb-3">本当に退会しますか？<br/>退会後は再度招待コードが必要です。</p>
+                <div className="flex gap-2">
+                  <button onClick={leaveGroup} className="flex-1 py-2.5 bg-red-600 text-white font-bold text-sm rounded-xl active:opacity-70">退会する</button>
+                  <button onClick={() => setShowLeaveConfirm(false)} className="flex-1 py-2.5 bg-gym-border text-gym-muted font-bold text-sm rounded-xl active:opacity-70">キャンセル</button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
