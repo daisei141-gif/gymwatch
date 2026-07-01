@@ -61,16 +61,15 @@ export default function PostPage() {
 
     const { data: { publicUrl } } = supabase.storage.from('gym-photos').getPublicUrl(path)
 
-    const { data: post, error: postErr } = await supabase.from('posts').insert({
+    const { error: postErr } = await supabase.from('posts').insert({
       user_id: user.id,
       group_id: member.group_id,
       photo_url: publicUrl,
       theme,
       caption,
-    }).select().single()
+    })
 
-    if (postErr || !post) { setError('投稿に失敗しました'); setLoading(false); return }
-
+    if (postErr) { setError('投稿に失敗しました'); setLoading(false); return }
     router.replace('/feed')
   }
 
@@ -115,47 +114,6 @@ export default function PostPage() {
           value={caption}
           onChange={e => setCaption(e.target.value)}
         />
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="input-label">重量(kg)</label>
-                  <input
-                    className="input-field mb-0"
-                    type="number"
-                    placeholder="80"
-                    value={w.weight}
-                    onChange={e => updateWorkout(i, 'weight', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="input-label">セット</label>
-                  <input
-                    className="input-field mb-0"
-                    type="number"
-                    placeholder="3"
-                    value={w.sets}
-                    onChange={e => updateWorkout(i, 'sets', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="input-label">レップ</label>
-                  <input
-                    className="input-field mb-0"
-                    type="number"
-                    placeholder="10"
-                    value={w.reps}
-                    onChange={e => updateWorkout(i, 'reps', e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-          <button
-            onClick={addWorkout}
-            className="w-full mt-3 py-2 border border-dashed border-gym-orange/40 rounded-xl text-gym-orange text-sm font-bold"
-          >
-            ＋ 種目を追加
-          </button>
-        </div>
 
         {error && (
           <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-3 mb-3 text-red-400 text-sm">
