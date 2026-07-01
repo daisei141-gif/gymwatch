@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase'
@@ -19,13 +19,95 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true)
   const [myVotes, setMyVotes] = useState({})
   const [stamps, setStamps] = useState({})
+  const [fallingStamps, setFallingStamps] = useState([])
+  const groupIdRef = useRef('')
+  const userIdRef = useRef('')
 
   useEffect(() => { loadFeed() }, [])
+
+  // フィードを開いた時に未確認スタンプがあれば降らせる
+  useEffect(() => {
+    if (loading) return
+    const pending = localStorage.getItem('pending_stamps')
+    if (pending) {
+      const emojis = JSON.parse(pending)
+      // 少し遅延させてから降らせる
+      setTimeout(() => {
+        emojis.forEach((emoji, i) => {
+          setTimeout(() => triggerFallingStamps(emoji), i * 300)
+        })
+      }, 500)
+      localStorage.removeItem('pending_stamps')
+      localStorage.setItem('stamp_badge', '0')
+      window.dispatchEvent(new Event('stamp_badge_update'))
+    }
+  }, [loading])
+
+  // リアルタイムでスタンプを監視（バッジ更新のみ）
+  useEffect(() => {
+    if (!groupId) return
+
+    const channel = supabase
+      .channel('stamps-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'stamps',
+      }, (payload) => {
+        if (payload.new.user_id !== userIdRef.current) {
+          // フィード画面を開いている場合はすぐ降らせる
+          if (document.querySelector('[data-feed-active]')) {
+            triggerFallingStamps(payload.new.emoji)
+          } else {
+            // フィード画面を開いていない場合はpendingに追加してバッジを増やす
+            const pending = JSON.parse(localStorage.getItem('pending_stamps') || '[]')
+            pending.push(payload.new.emoji)
+            localStorage.setItem('pending_stamps', JSON.stringify(pending))
+            const current = parseInt(localStorage.getItem('stamp_badge') || '0')
+            localStorage.setItem('stamp_badge', String(current + 1))
+            window.dispatchEvent(new Event('stamp_badge_update'))
+          }
+        }
+        // スタンプ数を更新
+        setStamps(prev => {
+          const postId = payload.new.post_id
+          const emoji = payload.new.emoji
+          const current = prev[postId]?.[emoji] || []
+          if (current.includes(payload.new.user_id)) return prev
+          return {
+            ...prev,
+            [postId]: {
+              ...prev[postId],
+              [emoji]: [...current, payload.new.user_id]
+            }
+          }
+        })
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [groupId])
+
+  function triggerFallingStamps(emoji) {
+    const newStamps = Array.from({ length: 15 }, (_, i) => ({
+      id: Date.now() + i,
+      emoji,
+      left: Math.random() * 90 + 5,
+      delay: Math.random() * 1.5,
+      size: Math.random() * 20 + 24,
+      duration: Math.random() * 1.5 + 2,
+    }))
+    setFallingStamps(prev => [...prev, ...newStamps])
+    setTimeout(() => {
+      setFallingStamps(prev => prev.filter(s => !newStamps.find(n => n.id === s.id)))
+    }, 4000)
+  }
 
   async function loadFeed() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.replace('/auth'); return }
     setUserId(user.id)
+    userIdRef.current = user.id
 
     const { data: member } = await supabase
       .from('group_members')
@@ -37,6 +119,7 @@ export default function FeedPage() {
 
     if (!member) { setLoading(false); return }
     setGroupId(member.group_id)
+    groupIdRef.current = member.group_id
 
     const { count } = await supabase
       .from('group_members')
@@ -169,7 +252,29 @@ export default function FeedPage() {
   )
 
   return (
-    <div className="min-h-screen pb-24 max-w-lg mx-auto">
+    <div className="min-h-screen pb-24 max-w-lg mx-auto relative" data-feed-active="true">
+      {/* スタンプが降ってくる演出 */}
+      {fallingStamps.map(stamp => (
+        <div
+          key={stamp.id}
+          className="fixed pointer-events-none z-50"
+          style={{
+            left: `${stamp.left}%`,
+            top: '-50px',
+            fontSize: `${stamp.size}px`,
+            animation: `fall ${stamp.duration}s ${stamp.delay}s ease-in forwards`,
+          }}
+        >
+          {stamp.emoji}
+        </div>
+      ))}
+
+      <style>{`
+        @keyframes fall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+      `}</style>
       <div className="px-4 pt-12 pb-3">
         <h2 className="section-title">みんなの投稿</h2>
       </div>
