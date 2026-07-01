@@ -2,24 +2,45 @@
 'use client'
 import { useState, useEffect } from 'react'
 
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
 export function usePushNotification() {
   const [permission, setPermission] = useState('default')
   const [supported, setSupported] = useState(false)
+  const [subscription, setSubscription] = useState(null)
 
   useEffect(() => {
-    if ('Notification' in window && 'serviceWorker' in navigator) {
+    if ('Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window) {
       setSupported(true)
       setPermission(Notification.permission)
-      // Register service worker
       navigator.serviceWorker.register('/sw.js').catch(console.error)
     }
   }, [])
 
-  async function requestPermission() {
-    if (!supported) return false
+  async function subscribe() {
+    if (!supported) return null
     const result = await Notification.requestPermission()
     setPermission(result)
-    return result === 'granted'
+    if (result !== 'granted') return null
+
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    })
+    setSubscription(sub)
+    return sub
   }
 
   function sendLocalNotification(title: string, body: string) {
@@ -33,5 +54,5 @@ export function usePushNotification() {
     })
   }
 
-  return { permission, supported, requestPermission, sendLocalNotification }
+  return { permission, supported, subscription, subscribe, sendLocalNotification }
 }

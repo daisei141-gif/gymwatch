@@ -28,22 +28,52 @@ export default function Dashboard() {
   const supabase = createClient()
   const [profile, setProfile] = useState(null)
   const [memberData, setMemberData] = useState(null)
+  const [groupId, setGroupId] = useState('')
+  const [userId, setUserId] = useState('')
   const [postCount, setPostCount] = useState(0)
   const [groupName, setGroupName] = useState('')
   const [taunt, setTaunt] = useState('')
   const [loading, setLoading] = useState(true)
-  const { permission, supported, requestPermission, sendLocalNotification } = usePushNotification()
+  const [sending, setSending] = useState(false)
+  const [sendMsg, setSendMsg] = useState('')
+  const { permission, supported, subscribe, sendLocalNotification } = usePushNotification()
 
   async function enableNotifications() {
-    const granted = await requestPermission()
-    if (granted) {
-      sendLocalNotification('GymWatch 通知オン！🔥', 'サボったらすぐ煽りが届くぞ💪')
-    }
+    const sub = await subscribe()
+    if (!sub || !groupId || !userId) return
+
+    // Supabaseに通知登録情報を保存
+    await supabase.from('push_subscriptions').upsert({
+      user_id: userId,
+      group_id: groupId,
+      subscription: sub.toJSON(),
+    })
+    sendLocalNotification('GymWatch 通知オン！🔥', 'サボったらすぐ煽りが届くぞ💪')
   }
 
-  function sendTauntNow() {
+  async function sendTauntToGroup() {
+    if (!groupId || !userId) return
+    setSending(true)
+    setSendMsg('')
     const msg = PUSH_TAUNTS[Math.floor(Math.random() * PUSH_TAUNTS.length)]
-    sendLocalNotification('GymWatch 煽り通知🔥', msg)
+    try {
+      const res = await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId,
+          senderId: userId,
+          title: 'GymWatch 煽り通知🔥',
+          body: msg,
+        }),
+      })
+      const data = await res.json()
+      setSendMsg(data.sent > 0 ? `${data.sent}人に送りました！` : '通知登録しているメンバーがいません')
+    } catch {
+      setSendMsg('送信に失敗しました')
+    }
+    setSending(false)
+    setTimeout(() => setSendMsg(''), 3000)
   }
 
   useEffect(() => {
@@ -53,6 +83,7 @@ export default function Dashboard() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.replace('/auth'); return }
+    setUserId(user.id)
 
     const { data: prof } = await supabase
       .from('profiles').select('*').eq('id', user.id).single()
@@ -70,6 +101,7 @@ export default function Dashboard() {
 
     if (member) {
       setMemberData(member)
+      setGroupId(member.group_id)
       const groupData: any = member.groups
       setGroupName((groupData && groupData.name) || '')
 
@@ -199,7 +231,7 @@ export default function Dashboard() {
             <p className="card-title">🔔 煽り通知</p>
             {permission !== 'granted' ? (
               <>
-                <p className="text-sm text-gym-muted mb-3">通知をオンにするとサボった時に煽りメッセージが届く！</p>
+                <p className="text-sm text-gym-muted mb-3">通知をオンにするとグループの誰かから煽りが届く！</p>
                 <button className="btn-orange py-3 text-sm" onClick={enableNotifications}>
                   通知をオンにする
                 </button>
@@ -207,11 +239,15 @@ export default function Dashboard() {
             ) : (
               <>
                 <p className="text-xs text-green-400 mb-3">✓ 通知オン済み</p>
+                {sendMsg && (
+                  <p className="text-xs text-gym-orange mb-2">{sendMsg}</p>
+                )}
                 <button
-                  onClick={sendTauntNow}
-                  className="w-full py-3 bg-gym-orange/10 border border-gym-orange/30 text-gym-orange font-bold text-sm rounded-2xl active:opacity-70"
+                  onClick={sendTauntToGroup}
+                  disabled={sending}
+                  className="w-full py-3 bg-gym-orange text-black font-black text-sm rounded-2xl active:opacity-70 disabled:opacity-50"
                 >
-                  🔥 今すぐ煽りを送る（テスト）
+                  {sending ? '送信中...' : '🔥 グループ全員に煽りを送る'}
                 </button>
               </>
             )}
