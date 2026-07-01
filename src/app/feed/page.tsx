@@ -89,7 +89,7 @@ export default function FeedPage() {
   }, [groupId])
 
   function triggerFallingStamps(emoji) {
-    const newStamps = Array.from({ length: 15 }, (_, i) => ({
+    const newStamps = Array.from({ length: 100 }, (_, i) => ({
       id: Date.now() + i,
       emoji,
       left: Math.random() * 90 + 5,
