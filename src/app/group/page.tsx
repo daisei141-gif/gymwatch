@@ -1,4 +1,4 @@
-// @ts-nocheck 
+// @ts-nocheck
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -134,6 +134,15 @@ export default function GroupPage() {
       .single()
     if (!member) return
     await supabase.from('group_members').update({ monthly_goal: newGoal }).eq('id', member.id)
+
+    // 目標変更ログを記録
+    await supabase.from('goal_logs').insert({
+      user_id: userId,
+      group_id: group?.id,
+      old_goal: myGoal,
+      new_goal: newGoal,
+    })
+
     setMyGoal(newGoal)
     setMsg('目標を保存しました！')
   }

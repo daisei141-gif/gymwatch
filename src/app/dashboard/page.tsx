@@ -105,6 +105,35 @@ export default function Dashboard() {
     loadData()
   }, [])
 
+  // 通知が許可済みの場合、ページ読み込み時に自動登録
+  useEffect(() => {
+    if (permission === 'granted' && supported && groupId && userId) {
+      autoRegisterPush()
+    }
+  }, [permission, supported, groupId, userId])
+
+  async function autoRegisterPush() {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: 'BKbU7EY5Delp0ybLEgWaUFSbzLooqzOZG02Au2N4vrpfvgcDganEkewhK-1qt2tkhWJqqAPn_r5OZ1p3fhf-Px0',
+        })
+      }
+      if (sub) {
+        await supabase.from('push_subscriptions').upsert({
+          user_id: userId,
+          group_id: groupId,
+          subscription: sub.toJSON(),
+        })
+      }
+    } catch (e) {
+      console.error('Auto push register error:', e)
+    }
+  }
+
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.replace('/auth'); return }
