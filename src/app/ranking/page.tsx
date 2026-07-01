@@ -98,7 +98,7 @@ export default function RankingPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-black text-base truncate">{m.profiles?.display_name}</p>
+                  <a href={`/profile/${m.user_id}`} className="font-black text-base truncate hover:text-gym-orange transition-colors">{m.profiles?.display_name}</a>
                   {m.isMe && <span className="text-xs text-gym-orange font-bold">YOU</span>}
                 </div>
                 <div className="mt-1 bg-gym-border rounded-full h-1.5 overflow-hidden">

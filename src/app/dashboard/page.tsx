@@ -23,6 +23,8 @@ const PUSH_TAUNTS = [
   '今すぐジムへ行け！それだけだ！🔥',
 ]
 
+const TEAM_COLORS = ['#ff6b1a','#3ecf8e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4','#ef4444','#84cc16','#f97316']
+
 export default function Dashboard() {
   const router = useRouter()
   const supabase = createClient()
@@ -36,6 +38,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [sendMsg, setSendMsg] = useState('')
+  const [teamGraphData, setTeamGraphData] = useState([])
+  const [exerciseList, setExerciseList] = useState([])
+  const [selectedExercise, setSelectedExercise] = useState('')
+  const [exerciseGraphData, setExerciseGraphData] = useState([])
   const { permission, supported, subscribe, sendLocalNotification } = usePushNotification()
 
   async function enableNotifications() {
@@ -169,11 +175,73 @@ export default function Dashboard() {
         .eq('status', 'approved')
         .gte('created_at', startOfMonth)
       setPostCount(count || 0)
+
+      // グループメンバー取得
+      const { data: members } = await supabase
+        .from('group_members')
+        .select('user_id, profiles(display_name)')
+        .eq('group_id', member.group_id)
+
+      if (members) {
+        setTeamGraphData(members.map((m, idx) => ({
+          userId: m.user_id,
+          name: m.profiles?.display_name || '?',
+          color: TEAM_COLORS[idx % TEAM_COLORS.length],
+        })))
+
+        // グループ内の全種目を取得
+        const { data: logs } = await supabase
+          .from('workout_logs')
+          .select('exercise')
+          .eq('group_id', member.group_id)
+        const uniqueExercises = [...new Set((logs || []).map(l => l.exercise))]
+        setExerciseList(uniqueExercises)
+        if (uniqueExercises.length > 0) {
+          setSelectedExercise(uniqueExercises[0])
+          await loadExerciseGraph(uniqueExercises[0], member.group_id, members)
+        }
+      }
     }
 
     const t = TAUNTS[Math.floor(Math.random() * TAUNTS.length)]
     setTaunt(t.replace('{name}', prof?.display_name || 'お前').replace('{count}', String(postCount)))
     setLoading(false)
+  }
+
+  async function loadExerciseGraph(exercise, gId, members) {
+    if (!exercise || !gId || !members) return
+    const { data: logs } = await supabase
+      .from('workout_logs')
+      .select('user_id, weight_kg, created_at')
+      .eq('group_id', gId)
+      .eq('exercise', exercise)
+      .not('weight_kg', 'is', null)
+      .order('created_at', { ascending: true })
+
+    const dataByUser = {}
+    members.forEach((m, idx) => {
+      const userLogs = (logs || []).filter(l => l.user_id === m.user_id)
+      dataByUser[m.user_id] = {
+        name: m.profiles?.display_name || '?',
+        color: TEAM_COLORS[idx % TEAM_COLORS.length],
+        points: userLogs.map(l => ({
+          date: new Date(l.created_at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
+          weight: l.weight_kg,
+        }))
+      }
+    })
+    setExerciseGraphData(Object.values(dataByUser).filter(d => d.points.length > 0))
+  }
+
+  async function handleExerciseChange(exercise) {
+    setSelectedExercise(exercise)
+    if (teamGraphData.length > 0 && groupId) {
+      const members = teamGraphData.map(m => ({
+        user_id: m.userId,
+        profiles: { display_name: m.name }
+      }))
+      await loadExerciseGraph(exercise, groupId, members)
+    }
   }
 
   async function handleLogout() {
@@ -271,6 +339,104 @@ export default function Dashboard() {
           <div className="bg-[#0a0014] border border-purple-800/50 rounded-2xl p-4 mb-3">
             <p className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-1">🎲 今月の罰ゲーム</p>
             <p className="text-purple-300 font-bold text-sm">{memberData.groups.penalty}</p>
+          </div>
+        )}
+
+        {/* 種目別チーム比較グラフ */}
+        {exerciseList.length > 0 && (
+          <div className="card mb-3">
+            <p className="card-title">📊 種目別チーム比較</p>
+
+            {/* 種目選択 */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {exerciseList.map(ex => (
+                <button
+                  key={ex}
+                  onClick={() => handleExerciseChange(ex)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    selectedExercise === ex
+                      ? 'bg-gym-orange text-black'
+                      : 'bg-gym-surface border border-gym-border text-gym-muted'
+                  }`}
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+
+            {exerciseGraphData.length === 0 ? (
+              <p className="text-gym-muted text-sm text-center py-4">まだデータがありません</p>
+            ) : (
+              <>
+                <div className="bg-gym-surface rounded-xl p-3 mb-3">
+                  {(() => {
+                    const allPoints = exerciseGraphData.flatMap(d => d.points)
+                    if (allPoints.length < 1) return null
+                    const maxW = Math.max(...allPoints.map(p => p.weight))
+                    const minW = Math.min(...allPoints.map(p => p.weight))
+                    const range = maxW - minW || 1
+                    const W = 300, H = 140, PAD = 28
+
+                    return (
+                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+                        {/* 横グリッド */}
+                        {[0, 0.5, 1].map((t, i) => (
+                          <g key={i}>
+                            <line x1={PAD} y1={PAD + (1-t) * (H - PAD * 2)} x2={W - PAD} y2={PAD + (1-t) * (H - PAD * 2)} stroke="#2a2a2a" strokeWidth="0.5"/>
+                            <text x={PAD - 2} y={PAD + (1-t) * (H - PAD * 2) + 3} textAnchor="end" fontSize="8" fill="#555">
+                              {Math.round(minW + t * range)}kg
+                            </text>
+                          </g>
+                        ))}
+
+                        {exerciseGraphData.map((member) => {
+                          if (member.points.length < 1) return null
+                          const pts = member.points.map((p, i) => ({
+                            x: PAD + (i / Math.max(member.points.length - 1, 1)) * (W - PAD * 2),
+                            y: H - PAD - ((p.weight - minW) / range) * (H - PAD * 2),
+                            ...p
+                          }))
+                          const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+                          const last = pts[pts.length - 1]
+                          return (
+                            <g key={member.name}>
+                              <path d={pathD} fill="none" stroke={member.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              {pts.map((p, i) => (
+                                <circle key={i} cx={p.x} cy={p.y} r="3" fill={member.color}/>
+                              ))}
+                              <text x={last.x + 4} y={last.y + 3} fontSize="8" fill={member.color} fontWeight="bold">
+                                {last.weight}kg
+                              </text>
+                            </g>
+                          )
+                        })}
+                      </svg>
+                    )
+                  })()}
+                </div>
+
+                {/* 凡例 */}
+                <div className="flex flex-wrap gap-3">
+                  {exerciseGraphData.map(member => {
+                    const latest = member.points[member.points.length - 1]
+                    const first = member.points[0]
+                    const diff = latest.weight - first.weight
+                    return (
+                      <div key={member.name} className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: member.color }}/>
+                        <span className="text-xs text-gym-muted">{member.name}</span>
+                        <span className="text-xs font-black" style={{ color: member.color }}>{latest.weight}kg</span>
+                        {diff !== 0 && (
+                          <span className={`text-xs font-bold ${diff > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {diff > 0 ? `+${diff}` : diff}kg
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
 

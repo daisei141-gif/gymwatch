@@ -14,14 +14,29 @@ const THEMES = [
 export default function PostPage() {
   const router = useRouter()
   const supabase = createClient()
-  const fileRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef(null)
 
   const [theme, setTheme] = useState(() => THEMES[Math.floor(Math.random() * THEMES.length)])
-  const [file, setFile] = useState<File | null>(null)
+  const [file, setFile] = useState(null)
   const [preview, setPreview] = useState('')
   const [caption, setCaption] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // 筋トレメモ
+  const [workouts, setWorkouts] = useState([{ exercise: '', weight: '', sets: '', reps: '' }])
+
+  function addWorkout() {
+    setWorkouts(prev => [...prev, { exercise: '', weight: '', sets: '', reps: '' }])
+  }
+
+  function removeWorkout(i) {
+    setWorkouts(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  function updateWorkout(i, field, value) {
+    setWorkouts(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: value } : w))
+  }
 
   function rerollTheme() {
     let next = theme
@@ -29,7 +44,7 @@ export default function PostPage() {
     setTheme(next)
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFile(e) {
     const f = e.target.files?.[0]
     if (!f) return
     setFile(f)
@@ -44,7 +59,6 @@ export default function PostPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.replace('/auth'); return }
 
-    // Get user's group
     const { data: member } = await supabase
       .from('group_members')
       .select('group_id')
@@ -55,7 +69,6 @@ export default function PostPage() {
 
     if (!member) { setError('先にグループに参加してください'); setLoading(false); return }
 
-    // Upload photo
     const ext = file.name.split('.').pop()
     const path = `${user.id}/${Date.now()}.${ext}`
     const { error: uploadErr } = await supabase.storage.from('gym-photos').upload(path, file)
@@ -63,16 +76,32 @@ export default function PostPage() {
 
     const { data: { publicUrl } } = supabase.storage.from('gym-photos').getPublicUrl(path)
 
-    // Create post
-    const { error: postErr } = await supabase.from('posts').insert({
+    const { data: post, error: postErr } = await supabase.from('posts').insert({
       user_id: user.id,
       group_id: member.group_id,
       photo_url: publicUrl,
       theme,
       caption,
-    })
+    }).select().single()
 
-    if (postErr) { setError('投稿に失敗しました'); setLoading(false); return }
+    if (postErr || !post) { setError('投稿に失敗しました'); setLoading(false); return }
+
+    // 筋トレメモを保存
+    const validWorkouts = workouts.filter(w => w.exercise.trim())
+    if (validWorkouts.length > 0) {
+      await supabase.from('workout_logs').insert(
+        validWorkouts.map(w => ({
+          post_id: post.id,
+          user_id: user.id,
+          group_id: member.group_id,
+          exercise: w.exercise.trim(),
+          weight_kg: w.weight ? parseFloat(w.weight) : null,
+          sets: w.sets ? parseInt(w.sets) : null,
+          reps: w.reps ? parseInt(w.reps) : null,
+        }))
+      )
+    }
+
     router.replace('/feed')
   }
 
@@ -89,10 +118,7 @@ export default function PostPage() {
           <p className="card-title">🎯 今日のお題</p>
           <p className="text-4xl font-black text-gym-orange mb-1">{theme}</p>
           <p className="text-gym-muted text-xs mb-3">この器具が写った写真を投稿してください</p>
-          <button
-            onClick={rerollTheme}
-            className="border border-gym-border rounded-xl px-4 py-2 text-gym-muted text-xs"
-          >
+          <button onClick={rerollTheme} className="border border-gym-border rounded-xl px-4 py-2 text-gym-muted text-xs">
             🔀 別のお題にする
           </button>
         </div>
@@ -100,9 +126,7 @@ export default function PostPage() {
         {/* Photo upload */}
         <div
           onClick={() => fileRef.current?.click()}
-          className={`w-full aspect-video rounded-2xl flex flex-col items-center justify-center gap-2
-                      border-2 border-dashed cursor-pointer transition-colors mb-4
-                      ${preview ? 'border-gym-orange' : 'border-gym-border'}`}
+          className={`w-full aspect-video rounded-2xl flex flex-col items-center justify-center gap-2 border-2 border-dashed cursor-pointer transition-colors mb-4 ${preview ? 'border-gym-orange' : 'border-gym-border'}`}
           style={preview ? { backgroundImage: `url(${preview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
         >
           {!preview && (
@@ -122,6 +146,64 @@ export default function PostPage() {
           value={caption}
           onChange={e => setCaption(e.target.value)}
         />
+
+        {/* 筋トレメモ */}
+        <div className="card mb-4">
+          <p className="card-title">💪 筋トレメモ（任意）</p>
+          {workouts.map((w, i) => (
+            <div key={i} className="mb-3 pb-3 border-b border-gym-border last:border-b-0 last:pb-0 last:mb-0">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  className="input-field mb-0 flex-1"
+                  placeholder="種目名（例：ベンチプレス）"
+                  value={w.exercise}
+                  onChange={e => updateWorkout(i, 'exercise', e.target.value)}
+                />
+                {workouts.length > 1 && (
+                  <button onClick={() => removeWorkout(i)} className="text-red-400 text-xl flex-shrink-0">×</button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="input-label">重量(kg)</label>
+                  <input
+                    className="input-field mb-0"
+                    type="number"
+                    placeholder="80"
+                    value={w.weight}
+                    onChange={e => updateWorkout(i, 'weight', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="input-label">セット</label>
+                  <input
+                    className="input-field mb-0"
+                    type="number"
+                    placeholder="3"
+                    value={w.sets}
+                    onChange={e => updateWorkout(i, 'sets', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="input-label">レップ</label>
+                  <input
+                    className="input-field mb-0"
+                    type="number"
+                    placeholder="10"
+                    value={w.reps}
+                    onChange={e => updateWorkout(i, 'reps', e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={addWorkout}
+            className="w-full mt-3 py-2 border border-dashed border-gym-orange/40 rounded-xl text-gym-orange text-sm font-bold"
+          >
+            ＋ 種目を追加
+          </button>
+        </div>
 
         {error && (
           <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-3 mb-3 text-red-400 text-sm">
