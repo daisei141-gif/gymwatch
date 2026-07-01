@@ -34,13 +34,22 @@ export function usePushNotification() {
     setPermission(result)
     if (result !== 'granted') return null
 
-    const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    })
-    setSubscription(sub)
-    return sub
+    try {
+      const reg = await navigator.serviceWorker.ready
+      // まず既存の購読を解除してから再登録
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) await existing.unsubscribe()
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY,
+      })
+      setSubscription(sub)
+      return sub
+    } catch (e) {
+      console.error('Push subscribe error:', e)
+      return null
+    }
   }
 
   function sendLocalNotification(title: string, body: string) {
