@@ -40,15 +40,40 @@ export default function Dashboard() {
 
   async function enableNotifications() {
     const sub = await subscribe()
-    if (!sub || !groupId || !userId) return
+    if (!sub) {
+      setSendMsg('通知の許可が必要です')
+      return
+    }
 
-    // Supabaseに通知登録情報を保存
-    await supabase.from('push_subscriptions').upsert({
-      user_id: userId,
-      group_id: groupId,
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data: member } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!member) {
+      setSendMsg('グループに参加してから通知をオンにしてください')
+      return
+    }
+
+    const { error } = await supabase.from('push_subscriptions').upsert({
+      user_id: user.id,
+      group_id: member.group_id,
       subscription: sub.toJSON(),
     })
-    sendLocalNotification('GymWatch 通知オン！🔥', 'サボったらすぐ煽りが届くぞ💪')
+
+    if (error) {
+      setSendMsg('登録に失敗しました: ' + error.message)
+    } else {
+      sendLocalNotification('GymWatch 通知オン！🔥', 'サボったらすぐ煽りが届くぞ💪')
+      setSendMsg('通知登録しました！')
+      setTimeout(() => setSendMsg(''), 3000)
+    }
   }
 
   async function sendTauntToGroup() {
