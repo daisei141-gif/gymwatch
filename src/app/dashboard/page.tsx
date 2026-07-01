@@ -212,16 +212,19 @@ export default function Dashboard() {
         const sorted = rankData.sort((a, b) => b.count - a.count)
         setRankingData(sorted)
 
-        // グループ内の全種目を取得
-        const { data: logs } = await supabase
-          .from('workout_logs')
-          .select('exercise')
+        // グループ内の全種目を取得（exercisesテーブルから）
+        const { data: exercisesData } = await supabase
+          .from('exercises')
+          .select('id, name, body_part')
           .eq('group_id', member.group_id)
-        const uniqueExercises = [...new Set((logs || []).map(l => l.exercise))]
-        setExerciseList(uniqueExercises)
-        if (uniqueExercises.length > 0) {
-          setSelectedExercise(uniqueExercises[0])
-          await loadExerciseGraph(uniqueExercises[0], member.group_id, members)
+          .order('body_part', { ascending: true })
+
+        const exerciseNames = (exercisesData || []).map(e => e.name)
+        setExerciseList(exerciseNames)
+
+        if (exerciseNames.length > 0) {
+          setSelectedExercise(exerciseNames[0])
+          await loadExerciseGraph(exerciseNames[0], member.group_id, members, exercisesData || [])
         }
       }
     }
@@ -231,39 +234,57 @@ export default function Dashboard() {
     setLoading(false)
   }
 
-  async function loadExerciseGraph(exercise, gId, members) {
-    if (!exercise || !gId || !members) return
-    const { data: logs } = await supabase
-      .from('workout_logs')
-      .select('user_id, weight_kg, created_at')
-      .eq('group_id', gId)
-      .eq('exercise', exercise)
-      .not('weight_kg', 'is', null)
-      .order('created_at', { ascending: true })
+  async function loadExerciseGraph(exerciseName, gId, members, exercisesData = []) {
+    if (!exerciseName || !gId || !members) return
 
+    // 種目IDを取得
+    const exercise = exercisesData.find(e => e.name === exerciseName)
+    if (!exercise) return
+
+    const { data: sets } = await supabase
+      .from('workout_sets')
+      .select('user_id, weight_kg, trained_at')
+      .eq('group_id', gId)
+      .eq('exercise_id', exercise.id)
+      .not('weight_kg', 'is', null)
+      .order('trained_at', { ascending: true })
+
+    // ユーザーごとに最大重量/日を集計
     const dataByUser = {}
     members.forEach((m, idx) => {
-      const userLogs = (logs || []).filter(l => l.user_id === m.user_id)
+      const userSets = (sets || []).filter(s => s.user_id === m.user_id)
+      // 日付ごとの最大重量
+      const byDate = {}
+      userSets.forEach(s => {
+        if (!byDate[s.trained_at] || s.weight_kg > byDate[s.trained_at]) {
+          byDate[s.trained_at] = s.weight_kg
+        }
+      })
       dataByUser[m.user_id] = {
-        name: m.profiles?.display_name || '?',
+        name: m.profiles?.display_name || m.name || '?',
         color: TEAM_COLORS[idx % TEAM_COLORS.length],
-        points: userLogs.map(l => ({
-          date: new Date(l.created_at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
-          weight: l.weight_kg,
+        points: Object.entries(byDate).map(([date, weight]) => ({
+          date: new Date(date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
+          weight,
         }))
       }
     })
     setExerciseGraphData(Object.values(dataByUser).filter(d => d.points.length > 0))
   }
 
-  async function handleExerciseChange(exercise) {
-    setSelectedExercise(exercise)
+  async function handleExerciseChange(exerciseName) {
+    setSelectedExercise(exerciseName)
     if (teamGraphData.length > 0 && groupId) {
+      const { data: exercisesData } = await supabase
+        .from('exercises')
+        .select('id, name, body_part')
+        .eq('group_id', groupId)
       const members = teamGraphData.map(m => ({
         user_id: m.userId,
+        name: m.name,
         profiles: { display_name: m.name }
       }))
-      await loadExerciseGraph(exercise, groupId, members)
+      await loadExerciseGraph(exerciseName, groupId, members, exercisesData || [])
     }
   }
 
