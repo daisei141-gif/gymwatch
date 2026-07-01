@@ -23,21 +23,6 @@ export default function PostPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // 筋トレメモ
-  const [workouts, setWorkouts] = useState([{ exercise: '', weight: '', sets: '', reps: '' }])
-
-  function addWorkout() {
-    setWorkouts(prev => [...prev, { exercise: '', weight: '', sets: '', reps: '' }])
-  }
-
-  function removeWorkout(i) {
-    setWorkouts(prev => prev.filter((_, idx) => idx !== i))
-  }
-
-  function updateWorkout(i, field, value) {
-    setWorkouts(prev => prev.map((w, idx) => idx === i ? { ...w, [field]: value } : w))
-  }
-
   function rerollTheme() {
     let next = theme
     while (next === theme) next = THEMES[Math.floor(Math.random() * THEMES.length)]
@@ -86,22 +71,6 @@ export default function PostPage() {
 
     if (postErr || !post) { setError('投稿に失敗しました'); setLoading(false); return }
 
-    // 筋トレメモを保存
-    const validWorkouts = workouts.filter(w => w.exercise.trim())
-    if (validWorkouts.length > 0) {
-      await supabase.from('workout_logs').insert(
-        validWorkouts.map(w => ({
-          post_id: post.id,
-          user_id: user.id,
-          group_id: member.group_id,
-          exercise: w.exercise.trim(),
-          weight_kg: w.weight ? parseFloat(w.weight) : null,
-          sets: w.sets ? parseInt(w.sets) : null,
-          reps: w.reps ? parseInt(w.reps) : null,
-        }))
-      )
-    }
-
     router.replace('/feed')
   }
 
@@ -146,23 +115,6 @@ export default function PostPage() {
           value={caption}
           onChange={e => setCaption(e.target.value)}
         />
-
-        {/* 筋トレメモ */}
-        <div className="card mb-4">
-          <p className="card-title">💪 筋トレメモ（任意）</p>
-          {workouts.map((w, i) => (
-            <div key={i} className="mb-3 pb-3 border-b border-gym-border last:border-b-0 last:pb-0 last:mb-0">
-              <div className="flex items-center gap-2 mb-2">
-                <input
-                  className="input-field mb-0 flex-1"
-                  placeholder="種目名（例：ベンチプレス）"
-                  value={w.exercise}
-                  onChange={e => updateWorkout(i, 'exercise', e.target.value)}
-                />
-                {workouts.length > 1 && (
-                  <button onClick={() => removeWorkout(i)} className="text-red-400 text-xl flex-shrink-0">×</button>
-                )}
-              </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="input-label">重量(kg)</label>
