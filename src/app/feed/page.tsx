@@ -171,6 +171,34 @@ export default function FeedPage() {
       setStamps(smap)
     }
 
+    // 未読スタンプを確認して演出を出す
+    const { data: unreadData } = await supabase
+      .from('unread_stamps')
+      .select('*')
+      .eq('user_id', user.id)
+
+    if (unreadData && unreadData.length > 0) {
+      // バッジ数を設定してBottomNavに通知
+      const badgeEvent = new CustomEvent('stamp_badge_count', { detail: unreadData.length })
+      window.dispatchEvent(badgeEvent)
+
+      // フィードを開いたら演出を出してunread_stampsを削除
+      const emojis = unreadData.map(s => s.emoji)
+      setTimeout(() => {
+        const uniqueEmojis = [...new Set(emojis)]
+        uniqueEmojis.forEach((emoji, i) => {
+          setTimeout(() => triggerFallingStamps(emoji), i * 400)
+        })
+      }, 600)
+
+      await supabase.from('unread_stamps').delete().eq('user_id', user.id)
+
+      // バッジをリセット
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('stamp_badge_count', { detail: 0 }))
+      }, 1000)
+    }
+
     setLoading(false)
   }
 
@@ -205,7 +233,6 @@ export default function FeedPage() {
     const alreadyStamped = currentStamps.includes(userId)
 
     if (alreadyStamped) {
-      // スタンプを外す
       await supabase.from('stamps').delete()
         .eq('post_id', postId)
         .eq('user_id', userId)
@@ -219,7 +246,6 @@ export default function FeedPage() {
         }
       }))
     } else {
-      // スタンプを押す
       await supabase.from('stamps').insert({ post_id: postId, user_id: userId, emoji })
 
       setStamps(prev => ({
@@ -229,6 +255,17 @@ export default function FeedPage() {
           [emoji]: [...currentStamps, userId]
         }
       }))
+
+      // 投稿者にunread_stampsを追加
+      const post = posts.find(p => p.id === postId)
+      if (post && post.user_id !== userId) {
+        await supabase.from('unread_stamps').insert({
+          user_id: post.user_id,
+          emoji,
+          from_user_id: userId,
+          group_id: groupIdRef.current,
+        })
+      }
     }
   }
 

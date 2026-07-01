@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase'
 
 const tabs = [
   { href: '/dashboard', icon: '🏠', label: 'ホーム' },
@@ -14,25 +15,26 @@ const tabs = [
 export default function BottomNav() {
   const pathname = usePathname()
   const [stampBadge, setStampBadge] = useState(0)
+  const supabase = createClient()
 
   useEffect(() => {
-    // バッジ数を読み込む
-    const count = parseInt(localStorage.getItem('stamp_badge') || '0')
-    setStampBadge(count)
-
-    // フィード画面に来たらバッジをリセット
-    if (pathname === '/feed') {
-      localStorage.setItem('stamp_badge', '0')
-      setStampBadge(0)
+    // 未読スタンプ数を取得
+    async function fetchBadge() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { count } = await supabase
+        .from('unread_stamps')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+      setStampBadge(count || 0)
     }
+
+    fetchBadge()
 
     // バッジ更新イベントを監視
-    const handler = () => {
-      const newCount = parseInt(localStorage.getItem('stamp_badge') || '0')
-      setStampBadge(newCount)
-    }
-    window.addEventListener('stamp_badge_update', handler)
-    return () => window.removeEventListener('stamp_badge_update', handler)
+    const handler = (e) => setStampBadge(e.detail)
+    window.addEventListener('stamp_badge_count', handler)
+    return () => window.removeEventListener('stamp_badge_count', handler)
   }, [pathname])
 
   return (
@@ -48,7 +50,7 @@ export default function BottomNav() {
           <span className="text-xl relative">
             {tab.icon}
             {tab.href === '/feed' && stampBadge > 0 && (
-              <span className="absolute -top-1 -right-2 bg-gym-orange text-black text-xs font-black rounded-full w-4 h-4 flex items-center justify-center" style={{fontSize: '9px'}}>
+              <span className="absolute -top-1 -right-2 bg-gym-orange text-black font-black rounded-full w-4 h-4 flex items-center justify-center" style={{fontSize: '9px'}}>
                 {stampBadge > 9 ? '9+' : stampBadge}
               </span>
             )}
