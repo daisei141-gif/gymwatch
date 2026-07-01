@@ -276,7 +276,15 @@ export default function FeedPage() {
         }
       `}</style>
       <div className="px-4 pt-12 pb-3">
-        <h2 className="section-title">みんなの投稿</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="section-title mb-0">みんなの投稿</h2>
+          <button
+            onClick={() => triggerFallingStamps('💪')}
+            className="text-xs text-gym-muted border border-gym-border rounded-lg px-3 py-1"
+          >
+            テスト演出
+          </button>
+        </div>
       </div>
 
       <div className="px-4">
@@ -345,26 +353,41 @@ export default function FeedPage() {
                 <p className="text-sm text-gym-muted mb-3">{item.caption}</p>
               )}
 
-              {/* スタンプ */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {STAMP_EMOJIS.map(emoji => {
-                  const count = stamps[item.id]?.[emoji]?.length || 0
-                  const stamped = stamps[item.id]?.[emoji]?.includes(userId)
-                  return (
-                    <button
-                      key={emoji}
-                      onClick={() => toggleStamp(item.id, emoji)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95 ${
-                        stamped
-                          ? 'bg-gym-orange text-black'
-                          : 'bg-gym-surface border border-gym-border text-gym-muted'
-                      }`}
-                    >
-                      {emoji} {count > 0 && <span>{count}</span>}
-                    </button>
-                  )
-                })}
-              </div>
+              {/* スタンプ - 自分の投稿以外のみ */}
+              {item.user_id !== userId ? (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {STAMP_EMOJIS.map(emoji => {
+                    const count = stamps[item.id]?.[emoji]?.length || 0
+                    const stamped = stamps[item.id]?.[emoji]?.includes(userId)
+                    return (
+                      <button
+                        key={emoji}
+                        onClick={() => toggleStamp(item.id, emoji)}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95 ${
+                          stamped
+                            ? 'bg-gym-orange text-black'
+                            : 'bg-gym-surface border border-gym-border text-gym-muted'
+                        }`}
+                      >
+                        {emoji} {count > 0 && <span>{count}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                /* 自分の投稿はスタンプ数だけ表示 */
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {STAMP_EMOJIS.map(emoji => {
+                    const count = stamps[item.id]?.[emoji]?.length || 0
+                    if (count === 0) return null
+                    return (
+                      <div key={emoji} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm bg-gym-surface border border-gym-border text-gym-muted">
+                        {emoji} <span>{count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* 投票 */}
               <div className="flex gap-3 mb-2 text-xs text-gym-muted">
