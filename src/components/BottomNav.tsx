@@ -8,14 +8,12 @@ import { createClient } from '@/lib/supabase'
 export default function BottomNav() {
   const pathname = usePathname()
   const [stampBadge, setStampBadge] = useState(0)
-  const [myId, setMyId] = useState('')
   const supabase = createClient()
 
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      setMyId(user.id)
       const { count } = await supabase
         .from('unread_stamps')
         .select('*', { count: 'exact', head: true })
@@ -23,7 +21,6 @@ export default function BottomNav() {
       setStampBadge(count || 0)
     }
     init()
-
     const handler = (e) => setStampBadge(e.detail)
     window.addEventListener('stamp_badge_count', handler)
     return () => window.removeEventListener('stamp_badge_count', handler)
@@ -33,8 +30,8 @@ export default function BottomNav() {
     { href: '/dashboard', icon: '🏠', label: 'ホーム' },
     { href: '/post',      icon: '📸', label: '投稿' },
     { href: '/feed',      icon: '📋', label: 'フィード' },
-    { href: '/ranking',   icon: '🏆', label: 'ランキング' },
-    { href: myId ? `/profile/${myId}` : '/dashboard', icon: '👤', label: 'マイページ' },
+    { href: '/workout',   icon: '💪', label: '筋トレ' },
+    { href: '/group',     icon: '👥', label: 'グループ' },
   ]
 
   return (
@@ -44,7 +41,7 @@ export default function BottomNav() {
           key={tab.label}
           href={tab.href}
           className={`flex-1 flex flex-col items-center py-3 gap-0.5 text-xs transition-colors relative ${
-            pathname === tab.href || (pathname.startsWith('/profile') && tab.icon === '👤') ? 'text-gym-orange' : 'text-gym-muted'
+            pathname === tab.href ? 'text-gym-orange' : 'text-gym-muted'
           }`}
         >
           <span className="text-xl relative">

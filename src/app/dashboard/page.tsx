@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [exerciseList, setExerciseList] = useState([])
   const [selectedExercise, setSelectedExercise] = useState('')
   const [exerciseGraphData, setExerciseGraphData] = useState([])
+  const [rankingData, setRankingData] = useState([])
   const { permission, supported, subscribe, sendLocalNotification } = usePushNotification()
 
   async function enableNotifications() {
@@ -179,7 +180,7 @@ export default function Dashboard() {
       // グループメンバー取得
       const { data: members } = await supabase
         .from('group_members')
-        .select('user_id, profiles(display_name)')
+        .select('user_id, monthly_goal, profiles(display_name)')
         .eq('group_id', member.group_id)
 
       if (members) {
@@ -188,6 +189,28 @@ export default function Dashboard() {
           name: m.profiles?.display_name || '?',
           color: TEAM_COLORS[idx % TEAM_COLORS.length],
         })))
+
+        // ランキングデータを取得
+        const now2 = new Date()
+        const startOfMonth2 = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString()
+        const rankData = await Promise.all(members.map(async (m) => {
+          const { count: mCount } = await supabase
+            .from('posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', m.user_id)
+            .eq('group_id', member.group_id)
+            .eq('status', 'approved')
+            .gte('created_at', startOfMonth2)
+          return {
+            user_id: m.user_id,
+            display_name: m.profiles?.display_name || '?',
+            monthly_goal: m.monthly_goal || 12,
+            count: mCount || 0,
+            isMe: m.user_id === user.id,
+          }
+        }))
+        const sorted = rankData.sort((a, b) => b.count - a.count)
+        setRankingData(sorted)
 
         // グループ内の全種目を取得
         const { data: logs } = await supabase
@@ -339,6 +362,41 @@ export default function Dashboard() {
           <div className="bg-[#0a0014] border border-purple-800/50 rounded-2xl p-4 mb-3">
             <p className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-1">🎲 今月の罰ゲーム</p>
             <p className="text-purple-300 font-bold text-sm">{memberData.groups.penalty}</p>
+          </div>
+        )}
+
+        {/* ランキング */}
+        {rankingData.length > 0 && (
+          <div className="card mb-3">
+            <p className="card-title">🏆 今月のランキング</p>
+            {rankingData.map((m, i) => {
+              const pct2 = Math.min(100, Math.round((m.count / m.monthly_goal) * 100))
+              const medals = ['🥇', '🥈', '🥉']
+              return (
+                <div key={m.user_id} className={`flex items-center gap-3 py-2.5 border-b border-gym-border last:border-b-0 ${m.isMe ? 'opacity-100' : 'opacity-90'}`}>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black flex-shrink-0 ${
+                    i === 0 ? 'bg-yellow-900/40 text-yellow-400' :
+                    i === 1 ? 'bg-gray-700/40 text-gray-400' :
+                    i === 2 ? 'bg-orange-900/30 text-orange-600' :
+                    'bg-gym-border text-gym-muted'}`}>
+                    {i < 3 ? medals[i] : i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-black text-sm truncate">{m.display_name}</p>
+                      {m.isMe && <span className="text-xs text-gym-orange font-bold">YOU</span>}
+                    </div>
+                    <div className="mt-1 bg-gym-border rounded-full h-1 overflow-hidden">
+                      <div className={`h-full rounded-full ${pct2 >= 80 ? 'bg-green-400' : pct2 >= 50 ? 'bg-gym-orange' : 'bg-red-400'}`} style={{ width: `${pct2}%` }}/>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-lg font-black text-gym-orange">{m.count}回</p>
+                    <p className="text-xs text-gym-muted">{pct2}%</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
