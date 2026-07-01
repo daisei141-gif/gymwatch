@@ -94,7 +94,7 @@ export default function FeedPage() {
       emoji,
       left: Math.random() * 90 + 5,
       delay: Math.random() * 1.5,
-      size: Math.random() * 20 + 24,
+      size: Math.random() * 30 + 50,
       duration: Math.random() * 1.5 + 2,
     }))
     setFallingStamps(prev => [...prev, ...newStamps])
